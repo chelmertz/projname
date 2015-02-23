@@ -1,11 +1,21 @@
 #define _GNU_SOURCE
 #include <curl/curl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* TODO s/get/head ? */
-/* TODO parallelize calls */
+/**
+ * This is an ugly c version of https://github.com/LogIN-/ospnc, it's mostly
+ * ugly because my c sucks.
+ *
+ * The usage of libcurl hides network stuff but should be interchangable with
+ * something more low-levelly.
+ */
+
+/* TODO s/get/head for more speedz, does it work? */
+
+#define CHECKS 3
 
 enum ret {
 	NAME_FREE = 0,
@@ -14,62 +24,129 @@ enum ret {
 	INTERNAL_ERROR = 4
 };
 
+static const char *project;
+
+static char *sites[3][2] = {
+	{ "pypi", "https://pypi.python.org/pypi/%s/" },
+	{ "sourceforge", "http://sourceforge.net/projects/%s/" },
+	{ "google code", "https://code.google.com/p/%s/"}
+};
+
+struct search_site {
+	char *project_url;
+	char *site;
+};
+
+/* I don't get it.. why's the * not on the type here, but on the function? */
+static struct search_site *search_site_new(const char *site, const char *url_template, const char *project) {
+	struct search_site *ss = malloc(sizeof(struct search_site));
+	if(!ss) {
+		perror("malloc()\n");
+		exit(INTERNAL_ERROR);
+	}
+	if(!asprintf(&ss->site, "%s", site)) {
+		perror("strdup()\n");
+		exit(INTERNAL_ERROR);
+	}
+	if(!asprintf(&ss->project_url, url_template, project)) {
+		perror("asprintf()\n");
+		exit(INTERNAL_ERROR);
+	}
+	return ss;
+};
+
+static void search_site_destroy(struct search_site *ss) {
+	if(ss == NULL) {
+		return;
+	}
+	if(ss->project_url != NULL) {
+		free(ss->project_url);
+	}
+	if(ss->site != NULL) {
+		free(ss->site);
+	}
+	free(ss);
+}
+
 static size_t curl_devnull(char *ptr, size_t size, size_t nmemb, void *userdata) {
 	return size * nmemb;
 }
 
-static int search_by_url(const char *site, const char *url_template, const char *project) {
+static void *search_by_url(void *url) {
 	CURL *curl;
 	CURLcode res;
 	long *response_code = NULL;
-	char *url = NULL;
-
-	if(!asprintf(&url, url_template, project)) {
-		perror("Could not asprintf()\n");
-		return HANDLER_FAILED;
-	}
+	/* Once again, why is the * on the right hand side here?
+	 * I thought it was (struct *search_site) url or so.. */
+	struct search_site *ss =  (struct search_site*) url;
 
 	curl = curl_easy_init();
+
 	if(!curl) {
-		perror("Curl could not init\n");
-		return HANDLER_FAILED;
+		perror("curl_easy_init()\n");
+		exit(HANDLER_FAILED);
 	}
-	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_URL, ss->project_url);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_devnull);
+	/* can't really get it to work without this, sadly: */
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
 	res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
-		fprintf(stderr, "curl_easy_perform() failed: %d\n", res);
-		return HANDLER_FAILED;
+		fprintf(stderr, "curl_easy_perform() failed: %d for url %s\n", res, ss->project_url);
+		exit(HANDLER_FAILED);
 	}
 	res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
 	if(res != CURLE_OK) {
 		fprintf(stderr, "curl_easy_getinfo() failed: %d\n", res);
-		return HANDLER_FAILED;
+		exit(HANDLER_FAILED);
 	}
-	free(url);
-	curl_easy_cleanup(curl);
 	if((int) response_code == 200) {
-		printf("[%s] taken\n", site);
-		return NAME_TAKEN;
+		printf("[%s] taken\n", ss->site);
+		curl_easy_cleanup(curl);
+		return (void *) NAME_TAKEN;
 	} else if((int) response_code == 404) {
-		return NAME_FREE;
+		curl_easy_cleanup(curl);
+		return (void *) NAME_FREE;
 	}
-	fprintf(stderr, "What does response code %ld mean for %s?\n", *response_code, site);
-	return HANDLER_FAILED;
+	fprintf(stderr, "What does response code %ld mean for %s?\n", *response_code, ss->site);
+	curl_easy_cleanup(curl);
+	exit(HANDLER_FAILED);
 }
 
 int main(int argc, char *argv[]) {
-	char *project;
-	int available = 0;
+	void *available = NULL;
+	int result = 0;
+	struct search_site *ss = NULL;
+	struct search_site *cleanup[CHECKS];
+	int i = 0;
+	int error = 0;
+	pthread_t threads[CHECKS];
+
 	if(argc != 2) {
 		fprintf(stderr, "Usage: %s <projectname>\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 	project = argv[1];
 
-	available = available | search_by_url("pypi", "https://pypi.python.org/pypi/%s/", project);
-	available = available | search_by_url("sourceforge", "http://sourceforge.net/projects/%s/", project);
-	available = available | search_by_url("google code", "https://code.google.com/p/%s/", project);
+	curl_global_init(CURL_GLOBAL_ALL);
 
-	return available;
+	for(i = 0; i < CHECKS; i++) {
+		ss = search_site_new(sites[i][0], sites[i][1], project);
+		cleanup[i] = ss;
+		error = pthread_create(&threads[i], NULL, search_by_url, (void *) ss);
+		if(error) {
+			fprintf(stderr, "pthread_crete() error: %d\n", error);
+		}
+	}
+
+	for(i = 0; i < CHECKS; i++) {
+		error = pthread_join(threads[i], &available);
+		if(error) {
+			fprintf(stderr, "pthread_join() error: %d\n", error);
+		}
+		search_site_destroy(cleanup[i]);
+		result |= (int) available;
+	}
+
+	return result;
 }

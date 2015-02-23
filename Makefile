@@ -1,7 +1,8 @@
 CC = clang
 CFLAGS += -g
+LDFLAGS += -lcurl -lpthread
 projname: projname.c
-	$(CC) $(CFLAGS) -lcurl $< -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
 
 clean:
 	rm -f projname
