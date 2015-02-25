@@ -6,8 +6,7 @@
 #include <string.h>
 
 /**
- * This is an ugly c version of https://github.com/LogIN-/ospnc, it's mostly
- * ugly because my c sucks.
+ * This is an ugly c version of https://github.com/LogIN-/ospnc
  *
  * The usage of libcurl hides network stuff but should be interchangable with
  * something more low-levelly.
@@ -15,7 +14,7 @@
 
 /* TODO s/get/head for more speedz, does it work? */
 
-#define CHECKS 3
+#define CHECKS 6
 
 enum ret {
 	NAME_FREE = 0,
@@ -26,10 +25,13 @@ enum ret {
 
 static const char *project;
 
-static char *sites[3][2] = {
+static char *sites[CHECKS][2] = {
 	{ "pypi", "https://pypi.python.org/pypi/%s/" },
 	{ "sourceforge", "http://sourceforge.net/projects/%s/" },
-	{ "google code", "https://code.google.com/p/%s/"}
+	{ "google code", "https://code.google.com/p/%s/"},
+	{ "rubygems", "https://rubygems.org/gems/%s" },
+	{ "debian", "http://sources.debian.net/src/%s/" },
+	{ "launchpad", "https://launchpad.net/%s" },
 };
 
 struct search_site {
