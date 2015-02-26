@@ -6,10 +6,12 @@
 #include <string.h>
 
 /**
- * This is an ugly c version of https://github.com/LogIN-/ospnc
+ * This is my ugly c version of https://github.com/LogIN-/ospnc
+ * because it's a fun and limited scope to explore c with (especially limited
+ * concerning the nice libcurl).
  *
  * The usage of libcurl hides network stuff but should be interchangable with
- * something more low-levelly.
+ * something more low-levelly (and more performant).
  */
 
 /* TODO s/get/head for more speedz, does it work? */
@@ -20,7 +22,7 @@ enum ret {
 	NAME_FREE = 0,
 	NAME_TAKEN = 1,
 	HANDLER_FAILED = 2,
-	INTERNAL_ERROR = 4
+	INTERNAL_ERROR = 3
 };
 
 static const char *project;
@@ -80,7 +82,12 @@ static void *search_by_url(void *url) {
 	long *response_code = NULL;
 	/* Once again, why is the * on the right hand side here?
 	 * I thought it was (struct *search_site) url or so.. */
-	struct search_site *ss =  (struct search_site*) url;
+	struct search_site *ss = (struct search_site*) url;
+
+	if(!url) {
+		fprintf(stderr, "search_by_url() need a url\n");
+		exit(INTERNAL_ERROR);
+	}
 
 	curl = curl_easy_init();
 
@@ -90,7 +97,8 @@ static void *search_by_url(void *url) {
 	}
 	curl_easy_setopt(curl, CURLOPT_URL, ss->project_url);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_devnull);
-	/* can't really get it to work without this, sadly: */
+	/* Google code returns CURLE_SSL_CACERT_BADFILE (77). You can tie a
+	 * cert to the requests performed if wanted. */
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
 	res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
