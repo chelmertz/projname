@@ -14,8 +14,6 @@
  * something more low-levelly (and more performant).
  */
 
-/* TODO s/get/head for more speedz, does it work? */
-
 #define CHECKS 6
 
 enum ret {
@@ -100,6 +98,7 @@ static void *search_by_url(void *url) {
 	/* Google code returns CURLE_SSL_CACERT_BADFILE (77). You can tie a
 	 * cert to the requests performed if wanted. */
 	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
+	curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
 	res = curl_easy_perform(curl);
 	if(res != CURLE_OK) {
 		fprintf(stderr, "curl_easy_perform() failed: %d for url %s\n", res, ss->project_url);
