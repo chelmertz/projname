@@ -1,0 +1,20 @@
+# projname
+
+	./projname linux
+	[debian] taken
+	[launchpad] taken
+	[pypi] taken
+	[google code] taken
+	$ echo $?
+	1
+
+Check if your open source project's name is already taken. Silly idea, good for
+a limited scope to get used to c (well...). Mimicked github.com/LogIN-/ospnc
+but this is probably a very old idea.
+
+Not including black duck (formerly ohloh) because it iss insanely slow, or
+github because you cannot search for exact matches of repository names.
+
+helmertz@gmail.com
+iamnearlythere.com
+github.com/chelmertz/projname
